@@ -1,0 +1,16 @@
+# dependencies and build output
+node_modules/
+dist/
+.vite/
+
+# local reference material (not used by the build, may be third-party images)
+design ideas/
+table designs billiards/
+
+# editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
