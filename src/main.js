@@ -58,6 +58,8 @@ const game = {
   rules: null, status: '', statusColor: null, toastText: '', toastSub: '', toastColor: null,
   settingsOpen: false, helpOpen: false, paused: false, viewKind: 'lobby', hasReplay: false, xr: false, banner: '', actions: {},
 };
+const qsClub = new URLSearchParams(location.search).get('club');
+if (qsClub && CLUBS.some((c) => c.id === qsClub)) game.options.club = qsClub;
 if (!CLUBS.some((c) => c.id === game.options.club)) game.options.club = 'luxury';
 
 const physics = new Physics();
@@ -628,12 +630,14 @@ vrBtn.addEventListener('click', async () => {
 renderer.xr.addEventListener('sessionstart', () => { game.xr = true; overlay.classList.add('hidden'); calibrateIn = 20; applyView(); layoutHud(); refresh(); });
 renderer.xr.addEventListener('sessionend', () => { game.xr = false; overlay.classList.remove('hidden'); applyView(); layoutHud(); refresh(); });
 
-// ?desktop opens the preview straight away; ?desktop=play also breaks off; &menu opens the table menu.
+// ?desktop opens the preview straight away; ?desktop=play also breaks off; &menu opens the table menu; &club=<id> picks the room; &still skips the fade and toast for screenshots.
 const qs = new URLSearchParams(location.search);
 if (qs.has('desktop')) {
   deskBtn.click();
   if (qs.get('desktop') === 'play') { startFrame(); if (qs.has('menu')) game.actions.toggleSettings(); }
   if (qs.has('help')) game.actions.toggleHelp();
+  // &still finishes any fade and clears the toast at once, for screenshots.
+  if (qs.has('still')) { const fn = fade.fn; fade.fn = null; fade.v = 0; fade.dir = 0; fadeMesh.visible = false; if (fn) fn(); clearToast(); }
 }
 if (navigator.xr && navigator.xr.isSessionSupported) {
   navigator.xr.isSessionSupported('immersive-vr').then((ok) => {
