@@ -14,3 +14,6 @@ table designs billiards/
 Thumbs.db
 desktop.ini
 *.log
+video/frames/
+video/out/
+video/remotion/node_modules/

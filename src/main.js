@@ -539,8 +539,7 @@ const cueCtx = {
 };
 const _f = new V3(), _u = new V3(), _p = new V3();
 
-function frame() {
-  const dt = Math.min(0.05, clock.getDelta()), time = clock.elapsedTime;
+function tick(dt, time) {
   const presenting = renderer.xr.isPresenting;
 
   if (presenting && calibrateIn > 0 && --calibrateIn === 0) calibrate();
@@ -603,6 +602,7 @@ function frame() {
 // --------------------------------------------------------------- start
 loadClub(game.options.club);
 applyView(); layoutHud(); refresh();
+function frame() { tick(Math.min(0.05, clock.getDelta()), clock.elapsedTime); }
 renderer.setAnimationLoop(frame);
 
 window.addEventListener('resize', () => {
@@ -630,7 +630,7 @@ vrBtn.addEventListener('click', async () => {
 renderer.xr.addEventListener('sessionstart', () => { game.xr = true; overlay.classList.add('hidden'); calibrateIn = 20; applyView(); layoutHud(); refresh(); });
 renderer.xr.addEventListener('sessionend', () => { game.xr = false; overlay.classList.remove('hidden'); applyView(); layoutHud(); refresh(); });
 
-// ?desktop opens the preview straight away; ?desktop=play also breaks off; &menu opens the table menu; &club=<id> picks the room; &still skips the fade and toast for screenshots.
+// ?desktop opens the preview straight away; ?desktop=play also breaks off; &menu opens the table menu; &club=<id> picks the room; &still skips the fade and toast for screenshots; &record hands the clock to video/record.mjs.
 const qs = new URLSearchParams(location.search);
 if (qs.has('desktop')) {
   deskBtn.click();
@@ -648,3 +648,49 @@ if (navigator.xr && navigator.xr.isSessionSupported) {
 
 // handy for testing from the console
 window.cueverse = { game, physics, cue, cueCtx, view, applyView, startFrame, renderer, scene, camera };
+
+// &record: no animation loop. A recorder (video/record.mjs) drives fixed time
+// steps through cueverse.rec and screenshots each one, so a slow machine can
+// still produce smooth footage.
+if (qs.has('record')) {
+  renderer.setAnimationLoop(null);
+  let recT = 0;
+  const nearestOn = () => {
+    const r = game.rules, cb = physics.cue;
+    const on = r.freeBall ? 'any' : r.on;
+    let best = null, bd = 1e9;
+    for (const b of physics.balls) {
+      if (b.potted || b.id === 'cue') continue;
+      if (on !== 'any' && !(on === 'red' ? b.type === 'red' : on === 'colour' ? b.type !== 'red' : b.type === on)) continue;
+      const d = Math.hypot(b.x - cb.x, b.z - cb.z);
+      if (d < bd) { bd = d; best = b; }
+    }
+    return best;
+  };
+  window.cueverse.rec = {
+    step(dt = 1 / 30) { recT += dt; tick(dt, recT); return game.state; },
+    state() {
+      const r = game.rules;
+      return { t: recT, state: game.state, view: view.kind, hasReplay: game.hasReplay, fade: fade.v, toast: game.toastText,
+        club: game.options.club, turn: r ? r.turn : -1, scores: r ? r.scores.slice() : [], on: r ? r.on : null,
+        help: game.helpOpen, menu: game.settingsOpen, moving: physics.isMoving() };
+    },
+    // The player shoots like the House Pro would; falls back to a plain hit on the nearest ball on.
+    shootPlanned(level = 'pro', V = 1.4) {
+      if (game.state !== 'aiming') return false;
+      const p = planShot(physics, game.rules, level);
+      if (p) { cueCtx.onStrike(p.dir, p.speed, p.a, p.b); return 'plan'; }
+      const b = nearestOn(); if (!b) return false;
+      const cb = physics.cue, dx = b.x - cb.x, dz = b.z - cb.z, l = Math.hypot(dx, dz) || 1;
+      cueCtx.onStrike({ x: dx / l, y: 0, z: dz / l }, V, 0, 0); return 'nearest';
+    },
+    breakOff(V = 3.4, side = 0.25) {
+      if (game.state !== 'aiming') return false;
+      const cb = physics.cue, apex = physics.byId.get('red1');
+      const dx = apex.x - cb.x, dz = apex.z - cb.z, l = Math.hypot(dx, dz) || 1;
+      cueCtx.onStrike({ x: dx / l, y: 0, z: dz / l }, V, 0, side); return true;
+    },
+    endReplay,
+    setView: (k) => setView(k),
+  };
+}
